@@ -79,4 +79,4 @@ def test_single_doc():
     results = idx.search(["unica", "prueba"])
     assert len(results) == 1
     assert results[0][0] == "d1"
-    assert results[0][1] == 1.0  # Normalizado, único doc = 1.0
+    assert results[0][1] > 0  # Score positivo

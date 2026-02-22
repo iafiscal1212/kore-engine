@@ -104,12 +104,24 @@ class BM25Index:
         if not scores:
             return []
 
-        # Normalizar scores a [0, 1]
-        max_score = max(scores.values()) if scores else 1.0
-        if max_score > 0:
-            normalized = {k: v / max_score for k, v in scores.items()}
-        else:
-            normalized = scores
+        # Normalizar scores a [0, 1]:
+        #   1. Dividir por max_score (ranking relativo)
+        #   2. Penalizar por coverage: qué fracción de tokens de la query
+        #      realmente matchearon. Evita falsos positivos cuando solo
+        #      1 de 4 tokens coincide por casualidad.
+        max_score = max(scores.values())
+        if max_score <= 0:
+            return []
+
+        n_qtokens = max(len(query_tokens), 1)
+        # Contar cuántos tokens de la query aparecen en el índice
+        tokens_matched = sum(1 for t in query_tokens if t in self._inverted)
+        coverage = tokens_matched / n_qtokens
+
+        normalized = {}
+        for doc_id, raw in scores.items():
+            # Score = ranking relativo * cobertura de la query
+            normalized[doc_id] = (raw / max_score) * coverage
 
         # Filtrar por min_score y ordenar
         results = [

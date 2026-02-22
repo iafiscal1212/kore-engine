@@ -138,10 +138,12 @@ class Kore:
                             )
 
         # ── Nivel 3: BM25 ────────────────────────────────────────────
+        # BM25 es más permisivo, usar umbral más alto para evitar falsos positivos
+        bm25_min = max(min_score, 0.7)
         if self._bm25.size > 0:
             q_tokens = tokenize(query)
             if q_tokens:
-                results = self._bm25.search(q_tokens, top_k=1, min_score=min_score)
+                results = self._bm25.search(q_tokens, top_k=1, min_score=bm25_min)
                 if results:
                     best_id, score = results[0]
                     entry = self._store.get_by_id(best_id)
