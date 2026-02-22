@@ -29,6 +29,7 @@ from kore.normalize import (
 from kore.storage.sqlite import SQLiteStore
 from kore.retrieval.bm25 import BM25Index
 from kore.ingest.loader import load_jsonl, load_csv, load_entries
+from kore.memory import SessionMemory
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,11 @@ class Kore:
       2. Keywords+categoría  (<1ms)
       3. BM25 ranking        (<5ms)
       4. Semántico ONNX      (<15ms, opcional)
+
+    Memoria conversacional:
+      - Recuerda contexto por sesión (topic, entidades, historial)
+      - Resuelve queries vagas ("y el repercutido?" → "IVA repercutido")
+      - Configurable: max_turns, session_ttl
     """
 
     def __init__(
@@ -51,6 +57,8 @@ class Kore:
         config: DomainConfig | None = None,
         semantic: bool = False,
         model_dir: str | Path | None = None,
+        max_turns: int = 10,
+        session_ttl: int = 3600,
     ):
         self.domain = domain
         self._config = config or DomainConfig(name=domain)
@@ -68,6 +76,9 @@ class Kore:
         self._semantic = None
         if semantic:
             self._init_semantic(model_dir)
+
+        # Memoria conversacional
+        self._memory = SessionMemory(max_turns=max_turns, session_ttl=session_ttl)
 
         # Cargar BM25 desde entries existentes
         self._rebuild_bm25()
@@ -90,15 +101,38 @@ class Kore:
 
     # ── API PRINCIPAL ─────────────────────────────────────────────────────
 
-    def ask(self, query: str) -> Optional[KoreResult]:
+    def ask(self, query: str, session_id: str | None = None) -> Optional[KoreResult]:
         """
         Pregunta al motor de conocimiento.
+
+        Args:
+            query: La pregunta del usuario.
+            session_id: ID de sesión para memoria conversacional.
+                        Si se pasa, Kore enriquece queries vagas con contexto
+                        y registra cada turno automáticamente.
 
         Recorre los 4 niveles de retrieval en orden.
         Devuelve KoreResult si encuentra algo con score >= min_score.
         Devuelve None si no sabe la respuesta (miss).
         """
         min_score = self._config.min_score
+
+        # ── Memoria: enriquecer query con contexto de sesión ─────────
+        original_query = query
+        if session_id:
+            query = self._memory.enrich(query, session_id)
+            if query != original_query:
+                logger.debug(f"Kore memory: '{original_query}' → '{query}'")
+
+        result = self._search(query, min_score)
+
+        # ── Memoria: registrar turno ──────────────────────────────────
+        self._record_to_memory(session_id, original_query, result)
+
+        return result
+
+    def _search(self, query: str, min_score: float) -> Optional[KoreResult]:
+        """Busca en los 4 niveles de retrieval."""
 
         # ── Nivel 1: Hash exacto ─────────────────────────────────────
         q_norm = normalize(query)
@@ -178,6 +212,22 @@ class Kore:
         # ── Miss ──────────────────────────────────────────────────────
         self._store.incr_stat("misses")
         return None
+
+    def _record_to_memory(self, session_id: str | None, query: str,
+                          result: KoreResult | None):
+        """Registra el turno en la memoria de sesión."""
+        if not session_id or result is None:
+            return
+        keywords = []
+        if self._config.categories:
+            _, keywords = extract_keywords(query, self._config.categories)
+        self._memory.record(
+            session_id=session_id,
+            query=query,
+            answer=result.answer[:500],
+            category=result.category,
+            keywords=keywords,
+        )
 
     # ── INGESTA ───────────────────────────────────────────────────────────
 
@@ -261,6 +311,20 @@ class Kore:
             if added:
                 count += 1
         return count
+
+    # ── MEMORIA ───────────────────────────────────────────────────────────
+
+    def context(self, session_id: str) -> dict:
+        """Contexto actual de una sesión (topic, entidades, turnos)."""
+        return self._memory.get_context(session_id)
+
+    def history(self, session_id: str, last_n: int = 5) -> list[dict]:
+        """Últimos N turnos de una sesión."""
+        return self._memory.get_history(session_id, last_n)
+
+    def forget(self, session_id: str):
+        """Olvida una sesión."""
+        self._memory.clear_session(session_id)
 
     # ── ESTADÍSTICAS ──────────────────────────────────────────────────────
 

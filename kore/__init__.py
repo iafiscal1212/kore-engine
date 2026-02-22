@@ -20,12 +20,16 @@ from kore.models import (
     MatchLevel,
     DomainConfig,
 )
+from kore.memory import SessionMemory, Session, Turn
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "Kore",
     "KoreResult",
     "KoreEntry",
     "MatchLevel",
     "DomainConfig",
+    "SessionMemory",
+    "Session",
+    "Turn",
 ]
