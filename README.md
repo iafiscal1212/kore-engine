@@ -176,4 +176,4 @@ k.stats()                                 # Hit rate, contadores, etc.
 
 ## Licencia
 
-MIT — [IAFiscal](https://iafiscal.es) © 2026
+Copyright (c) 2024-2026 Carmen Esteban. All rights reserved. No part of this software may be copied, modified, distributed or used without express written permission.
