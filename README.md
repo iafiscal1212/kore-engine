@@ -7,7 +7,6 @@
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/dependencias-0-brightgreen" alt="Zero deps">
   <img src="https://img.shields.io/badge/latencia-%3C1ms-orange" alt="<1ms">
-  <img src="https://img.shields.io/badge/licencia-MIT-lightgrey" alt="MIT">
 </p>
 
 ---
